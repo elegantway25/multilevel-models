@@ -1,0 +1,166 @@
+---
+title: "Model selection in multilevel models"
+subtitle: "A practical tutorial in R"
+author: "Danaia Burtseva"
+date: "February 2026"
+output:
+  xaringan::moon_reader:
+    lib_dir: libs
+    seal: false
+    nature:
+      ratio: "16:9"
+      highlightStyle: github
+      highlightLines: true
+---
+
+```{r setup, include=FALSE}
+options(width = 100)
+knitr::opts_chunk$set(message=FALSE, warning=FALSE, fig.width=8, fig.height=4, fig.retina=2)
+library(lme4)
+library(lmerTest)
+library(dplyr)
+library(ggplot2)
+library(performance)
+library(MuMIn)
+library(cAIC4)
+```
+
+## Learning goals
+- What “model selection” means in multilevel (mixed-effects) models
+- Compare tools: LRT, AIC/BIC, cAIC, R², model averaging
+- Apply to clustered data + crossed random effects
+
+---
+## Why it’s harder than regression
+- You choose fixed effects *and* random-effects structure
+- Variance parameters can be on boundaries (e.g., variance = 0)
+- Different criteria answer different questions (prediction vs inference)
+
+---
+class: inverse, center, middle
+# Part 1 — Clustered data (random intercepts & slopes)
+
+---
+## Simulate clustered data
+```{r}
+set.seed(1)
+m  <- 40; ni <- 30; N <- m*ni
+group <- factor(rep(seq_len(m), each = ni))
+x <- rnorm(N)
+b0 <- rnorm(m, 0, 1.0)
+b1 <- rnorm(m, 0, 0.6)
+eta <- 1.5 + 0.8*x + b0[group] + b1[group]*x
+y   <- eta + rnorm(N, 0, 1.2)
+dat <- data.frame(y, x, group)
+head(dat)
+```
+
+---
+## Candidate models
+```{r}
+m0 <- lmer(y ~ 1 + (1|group), data = dat, REML = TRUE)
+m1 <- lmer(y ~ x + (1|group), data = dat, REML = TRUE)
+m2 <- lmer(y ~ x + (1 + x|group), data = dat, REML = TRUE)
+m3 <- lmer(y ~ x + I(x^2) + (1 + x|group), data = dat, REML = TRUE)
+```
+
+---
+## LRT for fixed effects: use ML (not REML)
+```{r}
+m1_ml <- update(m1, REML = FALSE)
+m3_ml <- update(m3, REML = FALSE)
+anova(m1_ml, m3_ml)
+```
+
+---
+## AIC/BIC across candidates (ML fits)
+```{r}
+mods_ml <- list(
+  m0 = update(m0, REML = FALSE),
+  m1 = update(m1, REML = FALSE),
+  m2 = update(m2, REML = FALSE),
+  m3 = update(m3, REML = FALSE)
+)
+ic <- do.call(AIC, mods_ml) |> as.data.frame()
+ic$BIC <- sapply(mods_ml, BIC)
+ic[order(ic$AIC), ]
+```
+
+---
+## cAIC (conditional AIC)
+```{r}
+cAIC_vals <- sapply(list(m0=m0, m1=m1, m2=m2, m3=m3), function(mod) cAIC4::cAIC(mod)$caic)
+cAIC_vals
+```
+
+---
+## R² (marginal vs conditional)
+```{r}
+performance::r2_nakagawa(m2)
+```
+
+---
+class: inverse, center, middle
+# Part 2 — Crossed random effects (subjects × items)
+
+---
+## Simulate crossed design
+```{r}
+set.seed(2)
+n_subj <- 60; n_item <- 40
+subj <- factor(rep(seq_len(n_subj), each = n_item))
+item <- factor(rep(seq_len(n_item), times = n_subj))
+cond <- rep(rep(c(0,1), each = n_item/2), times = n_subj) |> factor()
+Xcond <- ifelse(cond=="1", 0.5, -0.5)
+u_subj0 <- rnorm(n_subj, 0, 0.8); u_item0 <- rnorm(n_item, 0, 0.6)
+u_subj1 <- rnorm(n_subj, 0, 0.4); u_item1 <- rnorm(n_item, 0, 0.2)
+eta <- 300 + 12*Xcond + u_subj0[subj] + u_item0[item] + u_subj1[subj]*Xcond + u_item1[item]*Xcond
+rt  <- eta + rnorm(length(eta), 0, 25)
+dat2 <- data.frame(rt, cond, subj, item)
+```
+
+---
+## Candidate random structures (ML)
+```{r}
+r0  <- lmer(rt ~ cond + (1|subj) + (1|item), data = dat2, REML = FALSE)
+rS  <- lmer(rt ~ cond + (1+cond|subj) + (1|item), data = dat2, REML = FALSE)
+rI  <- lmer(rt ~ cond + (1|subj) + (1+cond|item), data = dat2, REML = FALSE)
+rSI <- lmer(rt ~ cond + (1+cond|subj) + (1+cond|item), data = dat2, REML = FALSE)
+AIC(r0, rS, rI, rSI) |> as.data.frame() |> arrange(AIC)
+```
+
+---
+## LRT for nested random structures
+```{r}
+anova(r0, rS)
+anova(r0, rI)
+anova(rS, rSI)
+```
+
+---
+## Model averaging (Akaike weights)
+```{r}
+cand <- list(r0=r0, rS=rS, rI=rI, rSI=rSI)
+aic_tab <- MuMIn::model.sel(cand)
+aic_tab
+avg <- MuMIn::model.avg(cand)
+summary(avg)
+```
+
+---
+## Reporting checklist
+- Define your candidate set (justify scientifically)
+- Use ML for fixed-effect comparisons; be cautious with boundary issues
+- Report AIC/BIC/cAIC + key diagnostics + R²
+- If several models are similarly supported: consider model averaging
+
+
+---
+## Session info
+```{r}
+sessionInfo()
+```
+
+---
+class: center, middle
+# End
