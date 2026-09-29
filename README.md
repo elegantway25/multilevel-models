@@ -45,12 +45,6 @@ rmarkdown::render("model-selection-multilevel.Rmd")
 All data are simulated with fixed seeds (`set.seed(1)`, `set.seed(2)`), so every number in the slides is
 reproducible. `sessionInfo()` is printed on the last slide.
 
-### Rendering and publishing the slides
-
-`rmarkdown::render()` produces `model-selection-multilevel.html` plus a `libs/` folder. To publish:
-copy the HTML to `index.html`, commit it together with `libs/`, and turn on GitHub Pages
-(Settings → Pages → Deploy from a branch → `main` / root).
-
 ## Background
 
 The tutorial draws on three papers, each answering a different question about mixed models. Full references
@@ -69,8 +63,6 @@ are below; the summaries are my own.
   simulate crossed designs and compare bottom-up and top-down selection strategies against model averaging.
   Correct selection depended far more on the design — the number of items in particular — than on the strategy,
   and standard errors of within-subject effects were the most vulnerable to getting it wrong.
-
-## References
 
 
 
